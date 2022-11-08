@@ -33,12 +33,7 @@ parser.add_argument("--remove_bg", default= False, help = "Removes the backgroun
     blank white background when set to true")
 args= parser.parse_args()
 
-# args.videos_path = "/media/lakpa/Storage/youngdusan_data/all_resized_videos"
-# args.output_path = "./resources/mediapipe_data_testing_refactor"
-# args.pose_estimation = "Openpose"
-# args.landmarks = 18
-# labels_path = "./class_names.json"
-    
+# Read the labels which is stored in json format
 with open(args.labels_path, "r") as f:
     global class_names
     class_names = json.load(f)
@@ -66,6 +61,16 @@ class VideoReader(object):
 class ExtractionUtils(object):
     @staticmethod
     def tile(a, dim, n_tile):
+        """Creates a tile of arrays by concatenating in a specified dimension
+
+        Args:
+            a (ndarray): The numpy array obtained from pose2numpy method
+            dim (int): Dimension of the extracted pose data coordinates. eg: 2 for (x, y)
+            n_tile (int): How many tiles to create
+
+        Returns:
+            ndarray: Tiles of array of a
+        """        
         a = torch.from_numpy(a)
         init_dim = a.size(dim)
         repeat_idx = [1] * a.dim()
@@ -78,6 +83,19 @@ class ExtractionUtils(object):
         return tiled_a.numpy()
 
     def pose2numpy(num_current_frames, landmark_list):
+        """Converts the list of estimated poses to numpy array
+
+        Args:
+            num_current_frames (int): The current frame number of the video data
+            landmark_list (list): The list of eestimated poses from Mediapipe or Openpose
+
+        Returns:
+            ndarray: Numpy array of the poses in the form (1, C, F, L, P)
+            C --> Number of coordinate channels of the pose eg: 2 for (x, y), 3 for (x, y, confidence) etc.
+            F --> Current frame in the loop of the video frames
+            L --> Total landmarks obtained from pose estimation tool
+            P --> Total number of persons to estimate in the frame
+        """        
         data_numpy = np.zeros((1, args.channels, num_current_frames, args.landmarks, args.no_persons))
         skeleton_seq = np.zeros((1, args.channels, args.total_frames, args.landmarks, args.no_persons))
         
@@ -88,7 +106,7 @@ class ExtractionUtils(object):
             elif args.pose_estimation == "Openpos":
                 data_numpy[0, 0:2, t, :, m] = np.transpose(landmark_list[t][m].data)
 
-        # if we have less than num_frames, repeat frames to reach num_frames
+        # If we have less than num_frames, repeat frames to reach total_frames
         diff = args.total_frames - num_current_frames
         if diff == 0:
             skeleton_seq = data_numpy
@@ -109,6 +127,15 @@ class ExtractionUtils(object):
     
     @staticmethod
     def save_labels(sample_names, class_names, out_path, part):
+        """Saves the label of the data according to the train and validation set
+
+        Args:
+            sample_names (list): The names of the files in the dataset to use \ 
+                as training or validation sample.
+            class_names (list): List of names of the action classes to classify
+            out_path (str): Path of the output path to save the labels
+            part (str): Argument to identify training or validation data
+        """        
         sample_labels = []
         classnames = sorted(list(class_names.keys()))
         for sample_name in sample_names:
@@ -124,7 +151,22 @@ class ExtractionUtils(object):
             
     @staticmethod
     def skip_n_frames(poses_list, required_frame = 60, skip_frame_val = 3):
-        
+        """Skips certain number of frames from the list of multiple frames.
+        This is optional and can be set to true if:
+        --> You have long actions
+        --> You want to trim into short sequences by randomly skipping certain \
+            frames in between
+
+        Args:
+            poses_list (list): _description_
+            required_frame (int, optional): The desired frame count. Defaults to 60.
+            skip_frame_val (int, optional): How many frames to skip . Defaults to 3.
+            :: For example, If 1, 2, 3, 4, 5, 6, 7, 8, 9, 9, 10 frames
+            :: selects 1, 5, 9 frames with 3 frames skio interval
+
+        Returns:
+            list: List of skipped frames
+        """        
         skipped_frames = []
         for i in range(0, len(poses_list), skip_frame_val):
             skipped_frames.append(poses_list[i])
@@ -146,8 +188,12 @@ class ExtractionUtils(object):
         return skipped_frames
 
     @staticmethod
-    def data_gen():
+    def split_dataset():
+        """Split dataset into training and validation samples
 
+        Returns:
+            list: List of filename of training samples and validation samples
+        """
         training_subjects = [i for i in range(1, 301)]
         sample_nums = []
         train_sample_names = []
@@ -166,8 +212,7 @@ class ExtractionUtils(object):
                 val_sample_names.append(sample_name)
 
         return train_sample_names, val_sample_names
-   
-   
+    
 if args.pose_estimation == "Openpose":
     print("Data extraction using Openpose.")
     from inference.pose_estimation.lightweight_open_pose.lightweight_open_pose_learner import \
@@ -237,7 +282,7 @@ if args.pose_estimation == "Openpose":
             np.save("{}/{}_data_joint.npy".format(out_path, part), skeleton_data)
 
         def run_extraction(self):
-            train_sample_names, validation_sample_names = ExtractionUtils.data_gen()
+            train_sample_names, validation_sample_names = ExtractionUtils.split_dataset()
             try:
                 self.extract_openpose_data(train_sample_names, args.total_frames, args.output_path, "train")
                 ExtractionUtils.save_labels(train_sample_names, class_names, args.output_path, "train")
@@ -247,6 +292,7 @@ if args.pose_estimation == "Openpose":
             except Exception:
                 raise ValueError
             print("Data extraction Finished")
+            
     if __name__ == "__main__":
         estimator = OpenposeExtractor()
         estimator.run_extraction()
@@ -261,7 +307,6 @@ elif args.pose_estimation == "Mediapipe":
             self.mp_pose = mp.solutions.pose
             self.mp_drawing = mp.solutions.drawing_utils
             
-
         def extract_mediapipe_data(self, sample_names, total_frames, out_path, part):
             skeleton_data = np.zeros(
                 (len(sample_names), 2, total_frames, 33, 1), dtype=np.float32
@@ -302,10 +347,7 @@ elif args.pose_estimation == "Mediapipe":
                                 landmarks.pop(0)
                             counter = total_frames
                             
-
-                    cap.release()
-                    # write data to the json file
-                    
+                    cap.release()                    
                     for index, landmark in enumerate(landmarks):
                         frame_landmarks = []
                         for keypoint in landmark:
@@ -319,7 +361,7 @@ elif args.pose_estimation == "Mediapipe":
             np.save("{}/{}_data_joint.npy".format(out_path, part), skeleton_data)
         
         def run_extraction(self):
-            train_sample_names, validation_sample_names = ExtractionUtils.data_gen()
+            train_sample_names, validation_sample_names = ExtractionUtils.split_dataset()
             if not os.path.exists(args.output_path):
                 os.makedirs(args.output_path)
             try:
@@ -331,8 +373,8 @@ elif args.pose_estimation == "Mediapipe":
                 ExtractionUtils.save_labels(validation_sample_names, class_names, args.output_path, "val")
             except:
                 raise ValueError
- 
             print("Data extraction Finished")
+            
     if __name__ == "__main__":
         estimator = MediapipeEstimator()
         estimator.run_extraction()
