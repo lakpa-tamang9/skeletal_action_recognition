@@ -36,6 +36,14 @@ class RecognitionDemo(object):
                                 9 : 'wind_that_shakes_trees'}
 
     def preds2label(self, confidence):
+        """Converts the predictions to the corresponding label based on the confidence value
+
+        Args:
+            confidence (array): Confidence value which is the output of the model
+
+        Returns:
+            labels(str): The action labels
+        """        
         k = 10
         class_scores, class_inds = torch.topk(confidence, k=k)
         labels = {
@@ -45,6 +53,12 @@ class RecognitionDemo(object):
         return labels
 
     def draw_preds(self, frame, preds):
+        """Draws the skeletal structure of the lightweight openpose learner
+
+        Args:
+            frame (ndarray): Image frame from the feed / video
+            preds (_type_): The prediction values of the model
+        """        
         for i, (cls, prob) in enumerate(preds.items()):
             cv2.putText(
                 frame,
@@ -57,12 +71,13 @@ class RecognitionDemo(object):
             )
 
     def prediction(self):
+        """Runs real time prediction based on lightweight openpose learner and trained GCN model
+        """        
         counter = 0
         frame_count = 0
         poses_list = []
         pred_list = []
         for img in self.image_provider:
-            height, width, _ = img.shape
             start_time = time.perf_counter()
             poses = self.pose_estimator.infer(img)
             
@@ -110,29 +125,6 @@ class RecognitionDemo(object):
             key = cv2.waitKey(1)
             if key == ord("q"):
                 break 
-                 
-    def display_pose_name(self, image, text):
-        img = cv2.putText(
-            image,
-            text,
-            (7, 50),
-            cv2.FONT_HERSHEY_COMPLEX,
-            2,
-            (0, 0, 0),
-            2,
-        )
-    
-        cv2.imshow("Result", img)
-        
-    def check_no_frames(self, frames, image, voting_label):
-        if frames != 0:
-            self.puttext_in_consecutive_frames(frames, image, voting_label)
-            
-    def puttext_in_consecutive_frames(self, no_frames, image, voting_label):
-        if no_frames > 0:
-            self.display_pose_name(image, voting_label)
-            no_frames -= 1
-            self.check_no_frames(no_frames, image, voting_label)
     
     
 if __name__ == "__main__":
