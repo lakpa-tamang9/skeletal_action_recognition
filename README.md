@@ -12,7 +12,9 @@ After preparation of the dataset is completed, you can proceed for training the 
 ### 3. Perform real time recognition
 After training the model, you can proceed for the real time inference. For inference, you can either use pre-recorded video or directly use web-camera feed to capture the actions of the performer in real time. The captured actions will then be passed to pose data extraction, followed by real time prediction of the performed actions.
 There are two programs for realizing real time recogntiion; one by using Mediapipe and the other by using Openpose with run_recog_mp.py and run_recognition.py files respectively.
-References:
+
+## References:
+This project was developed with the help of multiple opensource references as follows:
 1. https://github.com/opendr-eu/opendr/blob/d8b1572e742bab6a2edc5ef8195cbf487c042a4d/src/opendr/perception/skeleton_based_action_recognition/spatio_temporal_gcn_learner.py
 
 2. https://github.com/open-mmlab/mmskeleton
