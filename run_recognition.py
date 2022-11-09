@@ -10,13 +10,14 @@ from inference.pose_estimation.lightweight_open_pose.lightweight_open_pose_learn
     LightweightOpenPoseLearner
 from inference.pose_estimation.lightweight_open_pose.utilities import draw
 from train_stgcn import SpatioTemporalGCNLearner
-from data_extraction import VideoReader, DataExtractor
 
 class RecognitionDemo(object):
-    def __init__(self, video_path):
+    def __init__(self, video_path, channels = 2, total_frames = 300, landmarks = 18, no_persons = 1):
 
-        self.data_extractor = DataExtractor()
-
+        self.channels = channels
+        self.total_frames = total_frames
+        self.landmarks = landmarks
+        self.no_persons = no_persons
         self.pose_estimator = LightweightOpenPoseLearner()
         self.pose_estimator.download(path=".", verbose=True)
         self.pose_estimator.load("openpose_default")
@@ -52,6 +53,46 @@ class RecognitionDemo(object):
         }
         return labels
 
+    def tile(self, a, dim, n_tile):       
+        a = torch.from_numpy(a)
+        init_dim = a.size(dim)
+        repeat_idx = [1] * a.dim()
+        repeat_idx[dim] = n_tile
+        a = a.repeat(*repeat_idx)
+        order_index = torch.LongTensor(
+            np.concatenate([init_dim * np.arange(n_tile) + i for i in range(init_dim)])
+        )
+        tiled_a = torch.index_select(a, dim, order_index)
+        return tiled_a.numpy()
+    
+    def pose2numpy(self, num_current_frames, landmark_list):
+       
+        data_numpy = np.zeros((1, self.channels, num_current_frames, self.landmarks, self.no_persons))
+        skeleton_seq = np.zeros((1, self.channels, self.total_frames, self.landmarks, self.no_persons))
+        
+        for t in range(num_current_frames):
+            m = 0 # Only predicted single pose
+            data_numpy[0, 0:2, t, :, m] = np.transpose(landmark_list[t][m].data)
+
+        # If we have less than num_frames, repeat frames to reach total_frames
+        diff = self.total_frames - num_current_frames
+        if diff == 0:
+            skeleton_seq = data_numpy
+        while diff > 0:
+            num_tiles = int(diff / num_current_frames)
+            if num_tiles > 0:
+                data_numpy = self.tile(data_numpy, 2, num_tiles + 1)
+                num_current_frames = data_numpy.shape[2]
+                diff = self.total_frames - num_current_frames
+            elif num_tiles == 0:
+                skeleton_seq[:, :, :num_current_frames, :, :] = data_numpy
+                for j in range(diff):
+                    skeleton_seq[:, :, num_current_frames + j, :, :] = data_numpy[
+                        :, :, -1, :, :
+                    ]
+                break
+        return skeleton_seq
+    
     def draw_preds(self, frame, preds):
         """Draws the skeletal structure of the lightweight openpose learner
 
@@ -90,12 +131,12 @@ class RecognitionDemo(object):
                     frame_count += 1
                     poses_list.append(poses)
 
-                if counter > self.data_extractor.total_frames:
+                if counter > self.total_frames:
                     poses_list.pop(0)
-                    counter = self.data_extractor.total_frames
+                    counter = self.total_frames
 
                 if counter > 0 and frame_count > 60:
-                    skeleton_seq = self.data_extractor.pose2numpy(counter, poses_list)
+                    skeleton_seq = self.pose2numpy(counter, poses_list)
 
                     prediction = self.action_classifier.infer(skeleton_seq)
                     skeleton_seq = []
@@ -126,6 +167,25 @@ class RecognitionDemo(object):
             if key == ord("q"):
                 break 
     
+class VideoReader(object):
+    def __init__(self, file_name):
+        self.file_name = file_name
+        try:  # OpenCV needs int to read from webcam
+            self.file_name = int(file_name)
+        except ValueError:
+            pass
+
+    def __iter__(self):
+        self.cap = cv2.VideoCapture(self.file_name)
+        if not self.cap.isOpened():
+            raise IOError("Video {} cannot be opened".format(self.file_name))
+        return self
+
+    def __next__(self):
+        was_read, img = self.cap.read()
+        if not was_read:
+            raise StopIteration
+        return img
     
 if __name__ == "__main__":
     # path = "./resources/test_videos/wholeaction_v2.mp4"
