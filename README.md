@@ -4,6 +4,7 @@ A simplified action recognition project to detect performed dance actions in rea
 
 ## Usage
 ### 1. Prepare and extract data
+The first step to realizing action recognition is to collect the desired data. This can be done by repeatedly recording the actions of multiple persons and creating a large sample of dataset. You can also use opensource datasets or create your own custom dataset consisting of the any type of actions.
 ### 2. Train the model
 ### 3. Perform real time recognition
 References:
