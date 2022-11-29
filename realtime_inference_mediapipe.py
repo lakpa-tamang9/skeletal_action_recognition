@@ -202,7 +202,7 @@ class RecognitionDemo(object):
 
                             if counter > 20:
                                 pred_text = self.action_labels[predicted_label.item()]
-                                image = cv2.putText(image, self.name_mapper[pred_text],(100, 100),cv2.FONT_HERSHEY_COMPLEX,2,(0, 0, 255),2) 
+                                image = cv2.putText(image, self.name_mapper[pred_text],(20, 120),cv2.FONT_HERSHEY_COMPLEX,2,(0, 0, 255),2) 
                                 pred_list.append(pred_text)
                             else:
                                 pred_text = ""   
@@ -246,6 +246,6 @@ class RecognitionDemo(object):
     
     
 if __name__ == "__main__":
-    path = "./test_video/test_video.mp4"
+    # path = "./test_video/test_video.mp4"
     recdem = RecognitionDemo()
-    recdem.prediction(path = path)
+    recdem.prediction(path = 0)
