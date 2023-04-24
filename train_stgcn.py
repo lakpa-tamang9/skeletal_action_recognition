@@ -105,8 +105,7 @@ class SpatioTemporalGCNLearner(Learner):
         self.num_frames = num_frames
         self.num_subframes = num_subframes
         self.old_model = old_model
-        # self.graph = KineticsGraph()
-        self.graph = MediapipeGraph()
+        self.graph = MediapipeGraph() if self.graph_type == "mediapipe" else KineticsGraph()
 
         if self.num_subframes > self.num_frames:
             raise ValueError(
