@@ -15,6 +15,7 @@ class RecognitionDemo(object):
     def __init__(
         self,
         labels_path,
+        model_path,
         model_name,
         total_frames=300,
         channels=2,
@@ -29,8 +30,8 @@ class RecognitionDemo(object):
         self.channels = channels
         self.landmarks, self.num_persons = landmarks, no_person
         self.total_frames = total_frames
-        self.model_saved_path = "./trained_model"
-        self.action_classifier.load(self.model_saved_path, model_name)
+        # self.model_saved_path = "./temp/230526_01_checkpoints"
+        self.action_classifier.load(model_path, model_name)
         self.mp_pose = mp.solutions.pose
         self.mp_drawing = mp.solutions.drawing_utils
         self.mp_drawing_styles = mp.solutions.drawing_styles
@@ -234,8 +235,16 @@ class RecognitionDemo(object):
                                         final_preds.pop(0)
                                     else:
                                         pred_to_show = final_preds[-1]
-                                        # print(pred_to_show)
-                                    # image = cv2.putText(image, pred_to_show,(minx, miny),cv2.FONT_HERSHEY_COMPLEX_SMALL,2,(0, 0, 255),2)
+                                        print(pred_to_show)
+                                    image = cv2.putText(
+                                        image,
+                                        pred_to_show,
+                                        (minx, miny),
+                                        cv2.FONT_HERSHEY_COMPLEX_SMALL,
+                                        2,
+                                        (0, 0, 255),
+                                        2,
+                                    )
                             else:
 
                                 image = cv2.putText(
@@ -282,17 +291,25 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--labels_path",
-        required=True,
         type=str,
         help="Path to the json file containing class names and it labels.",
     )
+    parser.add_argument("--model_path", help="Path to the trained model directory.")
 
     parser.add_argument(
-        "--model_name", required=True, help="Name of the trained model (.pt extension)"
+        "--model_name", help="Name of the trained model (.pt extension)"
     )
 
-    args = parser.parse_args()
-    recdem = RecognitionDemo(labels_path=args.labels_path, model_name=args.model_name)
+    # args = parser.parse_args()
+    # args.labels_path = "./class_names.json"
+    # args.model_path = "./temp/230526_01_checkpoints"
+    # args.model_name = "230526_01-44-945"
+    # args.video_path = "./resources/evaluation_files/test_video.mp4"
+    recdem = RecognitionDemo(
+        labels_path=args.labels_path,
+        model_path=args.model_path,
+        model_name=args.model_name,
+    )
     recdem.prediction(path=args.video_path)
 
 # Model name: mediapipe_model-44-945
