@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 parser = argparse.ArgumentParser("Data argument parser")
 parser.add_argument("--pose_estimation", default=None, choices = ["Mediapipe", "Openpose"], help = "Pose estimation type Openpose \
-    or Mediapipe", required=True)
+    or Mediapipe")
 parser.add_argument("--channels", default = 2, help = "Coordinates of the pose estimation \
     2 if 2D without confidence score, 3 if 3D or 2D with confidence score")
 parser.add_argument("--visualize", default = False, help = "Visualize the pose detection while \
@@ -33,6 +33,14 @@ parser.add_argument("--save_keypoints", default=False)
 parser.add_argument("--remove_bg", default= False, help = "Removes the background and uses \
     blank white background when set to true")
 args= parser.parse_args()
+
+# Defining arguments for debug test
+args.pose_estimation = "Mediapipe"
+args.total_frames = 60
+args.videos_path = "/media/lakpa/Storage/youngdusan_data/sculpture_resized_videos"
+args.output_path = "./resources_v2/extracted_data"
+args.labels_path = "./resources_v2/labels/class_names_sculpture.json"
+args.landmarks = 33
 
 # Read the labels which is stored in json format
 with open(args.labels_path, "r") as f:
