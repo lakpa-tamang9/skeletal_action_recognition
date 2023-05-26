@@ -300,7 +300,7 @@ if __name__ == "__main__":
         "--model_name", help="Name of the trained model (.pt extension)"
     )
 
-    # args = parser.parse_args()
+    args = parser.parse_args()
     # args.labels_path = "./class_names.json"
     # args.model_path = "./temp/230526_01_checkpoints"
     # args.model_name = "230526_01-44-945"
