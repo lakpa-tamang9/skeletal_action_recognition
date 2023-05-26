@@ -1,4 +1,5 @@
 from __future__ import print_function
+from email.policy import strict
 
 import inspect
 import json
@@ -52,13 +53,13 @@ class SpatioTemporalGCNLearner(Learner):
         drop_after_epoch=[30, 40],
         start_epoch=0,
         dataset_name="ygar_mp",
-        num_class=10,
+        num_class=3,
         num_point=18,
         num_person=1,
         in_channels=2,
         graph_type="mediapipe",
         method_name="stgcn",
-        old_model=True,
+        old_model=False,
         stbln_symmetric=False,
         num_frames=60,  # original 300
         num_subframes=30,  # original 100
@@ -691,7 +692,7 @@ class SpatioTemporalGCNLearner(Learner):
         m = nn.Softmax(dim=0)
         softmax_predictions = m(output.data[0])
         class_ind = int(torch.argmax(softmax_predictions))
-        class_description = self.classes_dict[class_ind]
+        class_description = self.action_labels[class_ind]
         category = Category(
             prediction=class_ind,
             confidence=softmax_predictions,
@@ -742,7 +743,12 @@ class SpatioTemporalGCNLearner(Learner):
         :type do_constant_folding: bool, optional
         """
         # Input to the model
-        c, t, v, m = [self.in_channels, 300, self.num_point, self.num_person]
+        c, t, v, m = [
+            self.in_channels,
+            self.num_frames,
+            self.num_point,
+            self.num_person,
+        ]
         n = self.batch_size
         onnx_input = torch.randn(n, c, t, v, m)
         if "cuda" in self.device:
@@ -751,12 +757,23 @@ class SpatioTemporalGCNLearner(Learner):
             # Some parts of the model do not make it to GPU, exporting it through CPU
             self.model.cpu()
             self.model.cuda_ = False
-            for x in self.model.layers:
-                if hasattr(self.model.layers[x], "gcn"):
-                    self.model.layers[x].gcn.cuda_ = False
-                elif hasattr(self.model.layers[x], "cuda_"):
-                    self.model.layers[x].cuda_ = False
-            onnx_input = Variable(onnx_input.float(), requires_grad=False)
+            if not self.old_model:
+                opset_version = 11
+                # for x in self.model.st_gcn_networks:
+                for x in self.model.layers:
+                    if hasattr(self.model.layers[x], "gcn"):
+                        self.model.layers[x].gcn.cuda_ = False
+                    elif hasattr(self.model.layers[x], "cuda_"):
+                        self.model.layers[x].cuda_ = False
+                onnx_input = Variable(onnx_input.float(), requires_grad=False)
+            else:
+                opset_version = 12
+                for x in self.model.st_gcn_networks:
+                    if hasattr(x, "gcn"):
+                        x.gcn.cuda_ = False
+                    elif hasattr(x, "cuda_"):
+                        x.cuda_ = False
+                onnx_input = Variable(onnx_input.float(), requires_grad=False)
         else:
             onnx_input = Variable(onnx_input.float(), requires_grad=False)
         # torch_out = self.model(onnx_input)
@@ -767,7 +784,6 @@ class SpatioTemporalGCNLearner(Learner):
             output_name,  # where to save the model (can be a file or file-like object)
             verbose=verbose,
             opset_version=11,
-            enable_onnx_checker=True,
             do_constant_folding=do_constant_folding,
             input_names=["onnx_input"],  # the model's input names
             output_names=["onnx_output"],  # the model's output names
@@ -1243,15 +1259,23 @@ class SpatioTemporalGCNLearner(Learner):
 if __name__ == "__main__":
     import time
 
-    my_label_path = "./class_names.json"
-    dataset_path = "./resources/mediapipe_data"
-    experiment_name = f"exp_{time.ctime(time.time())}"
+    my_label_path = "./resources_v2/labels/class_names_sculpture.json"
+    dataset_path = "./resources_v2/extracted_data"
+    experiment_name = f"exp_old_gcn{time.time()}"
+    EPOCHS = 45
+    NUM_CLASS = 3
+    NUM_POINT = 33
+    convert_to_onnx = False
+    oldmodel = True
     stgcn = SpatioTemporalGCNLearner(
         experiment_name=experiment_name,
         label_path=my_label_path,
-        epochs=45,
-        num_class=10,
-        old_model=True,
+        epochs=EPOCHS,
+        num_class=NUM_CLASS,
+        num_point=NUM_POINT,
+        old_model=oldmodel,
     )
     # results = stgcn.fit(dataset_path = "./resources/all_classes_60frames")
     results = stgcn.fit(dataset_path=dataset_path)
+    if convert_to_onnx:
+        stgcn.optimize()
