@@ -17,6 +17,7 @@ class RecognitionDemo(object):
         labels_path,
         model_path,
         model_name,
+        old_model,
         total_frames=300,
         channels=2,
         landmarks=33,
@@ -25,6 +26,8 @@ class RecognitionDemo(object):
         self.action_classifier = SpatioTemporalGCNLearner(
             in_channels=channels,
             num_point=landmarks,
+            old_model=old_model,
+            label_path=labels_path,
             graph_type="mediapipe",
         )
         self.channels = channels
@@ -41,7 +44,7 @@ class RecognitionDemo(object):
         self.action_labels = {v: k for k, v in class_names.items()}
 
     def preds2label(self, confidence):
-        k = 10
+        k = len(self.action_labels)
         class_scores, class_inds = torch.topk(confidence, k=k)
         labels = {
             self.action_labels[int(class_inds[j])]: float(class_scores[j].item())
@@ -212,6 +215,7 @@ class RecognitionDemo(object):
                             predicted_label = torch.argmax(prediction.confidence)
                             if counter > 20:
                                 pred_text = self.action_labels[predicted_label.item()]
+                                print(pred_text)
                                 pred_list.append(pred_text)
                             else:
                                 pred_text = ""
@@ -301,14 +305,18 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    # args.labels_path = "./class_names.json"
-    # args.model_path = "./temp/230526_01_checkpoints"
-    # args.model_name = "230526_01-44-945"
-    # args.video_path = "./resources/evaluation_files/test_video.mp4"
+    args.labels_path = "./resources_v2/labels/class_names_sculpture.json"
+    # args.model_path = "./temp/exp_old_gcn1685076907.493895_checkpoints"
+    args.model_path = "./temp/exp_new_gcn1685075283.8069236_checkpoints"
+    # args.model_name = "exp_old_gcn1685076907.493895-44-270"
+    args.model_name = "exp_new_gcn1685075283.8069236-44-270"
+    args.video_path = "./resources/evaluation_files/test_video.mp4"
+    oldmodel = False  # Set to true to use old model
     recdem = RecognitionDemo(
         labels_path=args.labels_path,
         model_path=args.model_path,
         model_name=args.model_name,
+        old_model=oldmodel,
     )
     recdem.prediction(path=args.video_path)
 
