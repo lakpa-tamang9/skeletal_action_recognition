@@ -1,9 +1,9 @@
+import argparse
+import json
 import time
 
 import cv2
 import numpy as np
-
-import pandas as pd
 import torch
 
 from inference.pose_estimation.lightweight_open_pose.lightweight_open_pose_learner import (
@@ -15,7 +15,15 @@ from train_stgcn import SpatioTemporalGCNLearner
 
 class RecognitionDemo(object):
     def __init__(
-        self, video_path, channels=2, total_frames=300, landmarks=18, no_persons=1
+        self,
+        video_path,
+        model_path,
+        model_name,
+        labels_path,
+        channels=2,
+        total_frames=300,
+        landmarks=18,
+        no_persons=1,
     ):
 
         self.channels = channels
@@ -28,28 +36,29 @@ class RecognitionDemo(object):
 
         self.action_classifier = SpatioTemporalGCNLearner(
             in_channels=2,
-            num_point=18,
+            num_point=landmarks,
             graph_type="openpose",
         )
-        self.model_saved_path = "./temp/yagr_all_class_60_frames_v2_checkpoints"
-        self.action_classifier.load(
-            self.model_saved_path, "yagr_all_class_60_frames_v2-44-945"
-        )
+        print(model_path, model_name)
+        self.action_classifier.load(model_path, model_name)
 
         self.image_provider = VideoReader(video_path)
         self.no_frames = 0
-        self.action_labels = {
-            0: "big_wind",
-            1: "bokbulbok",
-            2: "chalseok_chalseok_phaldo",
-            3: "chulong_chulong_phaldo",
-            4: "crafty_tricks",
-            5: "flower_clock",
-            6: "seaweed_in_the_swell_sea",
-            7: "sowing_corn_and_driving_pigeons",
-            8: "waves_crashing",
-            9: "wind_that_shakes_trees",
-        }
+        with open(labels_path) as f:
+            class_labels = json.load(f)
+        self.action_labels = {v: k for k, v in class_labels.items()}
+        # self.action_labels = {
+        #     0: "big_wind",
+        #     1: "bokbulbok",
+        #     2: "chalseok_chalseok_phaldo",
+        #     3: "chulong_chulong_phaldo",
+        #     4: "crafty_tricks",
+        #     5: "flower_clock",
+        #     6: "seaweed_in_the_swell_sea",
+        #     7: "sowing_corn_and_driving_pigeons",
+        #     8: "waves_crashing",
+        #     9: "wind_that_shakes_trees",
+        # }
 
     def preds2label(self, confidence):
         """Converts the predictions to the corresponding label based on the confidence value
@@ -233,7 +242,33 @@ class VideoReader(object):
 
 
 if __name__ == "__main__":
-    # path = "./resources/test_videos/wholeaction_v2.mp4"
+    parser = argparse.ArgumentParser("Arguments for running real time inference")
+    parser.add_argument(
+        "--video_path",
+        default=None,
+        type=str,
+        help="Path to the video. Set to 0 for camera feed.",
+    )
+    parser.add_argument(
+        "--model_name", default=None, type=str, help="Name of the trained model (.pt)"
+    )
+    parser.add_argument("--model_path", type=str, help="Path to the trained model.")
+    parser.add_argument(
+        "--labels_path",
+        required=True,
+        type=str,
+        help="Path to the json file containing class names and it labels.",
+    )
     path = "./videofile.avi"
-    recdem = RecognitionDemo(video_path=0)
+    args = parser.parse_args()
+    recdem = RecognitionDemo(
+        video_path=args.video_path,
+        model_path=args.model_path,
+        model_name=args.model_name,
+        labels_path=args.labels_path,
+    )
     recdem.prediction()
+
+# path = "./resources/test_videos/wholeaction_v2.mp4"
+# model_name = yagr_all_class_60_frames_v2 - 44 - 945
+# model_path = "./temp/yagr_all_class_60_frames_v2_checkpoints"
