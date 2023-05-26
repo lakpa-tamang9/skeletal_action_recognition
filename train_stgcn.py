@@ -1259,14 +1259,14 @@ class SpatioTemporalGCNLearner(Learner):
 if __name__ == "__main__":
     import time
 
-    my_label_path = "./resources_v2/labels/class_names_sculpture.json"
-    dataset_path = "./resources_v2/extracted_data"
-    experiment_name = f"exp_old_gcn{time.time()}"
+    my_label_path = "./resources_v2/labels/class_names.json"
+    dataset_path = "./resources/mediapipe_data"
+    experiment_name = "exp_new_gcn_allclass"
     EPOCHS = 45
-    NUM_CLASS = 3
+    NUM_CLASS = 10
     NUM_POINT = 33
-    convert_to_onnx = False
-    oldmodel = True
+    convert_to_onnx = True
+    oldmodel = False
     stgcn = SpatioTemporalGCNLearner(
         experiment_name=experiment_name,
         label_path=my_label_path,
