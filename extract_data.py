@@ -11,8 +11,8 @@ import torch
 from tqdm import tqdm
 
 parser = argparse.ArgumentParser("Data argument parser")
-parser.add_argument("--pose_estimation", default=None, help = "Pose estimation type Openpose \
-    or Mediapipe", required=True)
+parser.add_argument("--pose_estimation", default=None, choices = ["Mediapipe", "Openpose"], help = "Pose estimation type Openpose \
+    or Mediapipe")
 parser.add_argument("--channels", default = 2, help = "Coordinates of the pose estimation \
     2 if 2D without confidence score, 3 if 3D or 2D with confidence score")
 parser.add_argument("--visualize", default = False, help = "Visualize the pose detection while \
@@ -20,6 +20,7 @@ parser.add_argument("--visualize", default = False, help = "Visualize the pose d
 parser.add_argument("--no_persons", default=1, help="Total number of person to estimate")
 parser.add_argument("--skip_frames", default=False, help = "Uses frame skipping technique \
     while creating dataset")
+parser.add_argument("--json_output_path", help="The path to the json file where the extracted keypoints are saved.")
 parser.add_argument("--total_frames", default=300, type = int, help = "Total number of frames \
     to process for a single action")
 parser.add_argument("--videos_path", default=None, type = str, help = "Root path to the video files")
@@ -32,6 +33,14 @@ parser.add_argument("--save_keypoints", default=False)
 parser.add_argument("--remove_bg", default= False, help = "Removes the background and uses \
     blank white background when set to true")
 args= parser.parse_args()
+
+# Defining arguments for debug test
+args.pose_estimation = "Mediapipe"
+args.total_frames = 60
+args.videos_path = "/media/lakpa/Storage/youngdusan_data/sculpture_resized_videos"
+args.output_path = "./resources_v2/extracted_data"
+args.labels_path = "./resources_v2/labels/class_names_sculpture.json"
+args.landmarks = 33
 
 # Read the labels which is stored in json format
 with open(args.labels_path, "r") as f:
@@ -69,7 +78,7 @@ class ExtractionUtils(object):
             n_tile (int): How many tiles to create
 
         Returns:
-            ndarray: Tiles of array of a
+            ndarray: Tiles of array
         """        
         a = torch.from_numpy(a)
         init_dim = a.size(dim)
@@ -103,7 +112,7 @@ class ExtractionUtils(object):
             m = 0 # Only predicted single pose
             if args.pose_estimation == "Mediapipe":
                 data_numpy[0, 0:2, t, :, m] = np.transpose(np.array(landmark_list.get(f"frame_{t}")))
-            elif args.pose_estimation == "Openpos":
+            elif args.pose_estimation == "Openpose":
                 data_numpy[0, 0:2, t, :, m] = np.transpose(landmark_list[t][m].data)
 
         # If we have less than num_frames, repeat frames to reach total_frames
@@ -266,6 +275,7 @@ if args.pose_estimation == "Openpose":
                         counter = total_frames
                 
                 if args.save_keypoints:
+                    # TODO: Use arguments for the output path
                     json_output_path = "./resources/json_keypoints_data"
                     if not os.path.exists(json_output_path):
                         os.makedirs(json_output_path)

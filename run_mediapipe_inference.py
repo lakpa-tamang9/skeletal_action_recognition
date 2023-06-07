@@ -1,40 +1,52 @@
+import argparse
 import time
 
 import cv2
+import mediapipe as mp
 import numpy as np
-
 import pandas as pd
 import torch
 
 from train_stgcn import SpatioTemporalGCNLearner
-import mediapipe as mp
+import json
+
 
 class RecognitionDemo(object):
-    def __init__(self, total_frames = 300, channels = 2, landmarks = 33, no_person = 1):
+    def __init__(
+        self,
+        labels_path,
+        model_path,
+        model_name,
+        num_class,
+        old_model,
+        total_frames=60,
+        channels=2,
+        landmarks=33,
+        no_person=1,
+    ):
         self.action_classifier = SpatioTemporalGCNLearner(
             in_channels=channels,
+            num_class=num_class,
             num_point=landmarks,
+            old_model=old_model,
+            label_path=labels_path,
             graph_type="mediapipe",
         )
         self.channels = channels
         self.landmarks, self.num_persons = landmarks, no_person
         self.total_frames = total_frames
-        self.model_saved_path = "./trained_model"
-        self.action_classifier.load(self.model_saved_path, "mediapipe_model-44-945")  
+        # self.model_saved_path = "./temp/230526_01_checkpoints"
+        self.action_classifier.load(model_path, model_name)
         self.mp_pose = mp.solutions.pose
         self.mp_drawing = mp.solutions.drawing_utils
         self.mp_drawing_styles = mp.solutions.drawing_styles
-        self.no_frames = 0
-        # self.action_labels = {0 : 'big_wind', 1 : 'bokbulbok', 2 : 'chalseok_chalseok_phaldo', 3 : 'chulong_chulong_phaldo', 4 : 'crafty_tricks',
-        #                         5 : 'flower_clock', 6 : 'seaweed_in_the_swell_sea', 7 : 'sowing_corn_and_driving_pigeons', 8 : 'waves_crashing',
-        #                         9 : 'wind_that_shakes_trees'}
 
-        self.action_labels = {0 : '큰바람', 1 : '복불복', 2 : '철썩철썩 파도', 3 : '출렁출렁 파도', 4 : '교묘한 속임술',
-                                5 : '꽃시계', 6 : '너울너울바다의해초', 7 : '옥수수 뿌리며 비둘기 몰이', 8 : '넘실넘실 파도',
-                                9 : '나무를 흔드는 바람'}
+        with open(labels_path) as f:
+            class_names = json.load(f)
+        self.action_labels = {v: k for k, v in class_names.items()}
 
     def preds2label(self, confidence):
-        k = 10
+        k = len(self.action_labels)
         class_scores, class_inds = torch.topk(confidence, k=k)
         labels = {
             self.action_labels[int(class_inds[j])]: float(class_scores[j].item())
@@ -65,15 +77,21 @@ class RecognitionDemo(object):
         )
         tiled_a = torch.index_select(a, dim, order_index)
         return tiled_a.numpy()
-    
+
     def pose2numpy(self, num_current_frames, landmark_list):
-        data_numpy = np.zeros((1, self.channels, num_current_frames, self.landmarks, self.num_persons))
-        skeleton_seq = np.zeros((1, self.channels, self.total_frames, self.landmarks, self.num_persons))
-        
+        data_numpy = np.zeros(
+            (1, self.channels, num_current_frames, self.landmarks, self.num_persons)
+        )
+        skeleton_seq = np.zeros(
+            (1, self.channels, self.total_frames, self.landmarks, self.num_persons)
+        )
+
         for t in range(num_current_frames):
-            m = 0 # Only predicted single pose
+            m = 0  # Only predicted single pose
             # kps = np.array(landmark_list.get(f"frame_{t}"))
-            data_numpy[0, 0:2, t, :, m] = np.transpose(np.array(landmark_list.get(f"frame_{t}")))
+            data_numpy[0, 0:2, t, :, m] = np.transpose(
+                np.array(landmark_list.get(f"frame_{t}"))
+            )
 
         # if we have less than num_frames, repeat frames to reach num_frames
         diff = self.total_frames - num_current_frames
@@ -128,18 +146,15 @@ class RecognitionDemo(object):
         maxy = int(maxy * image.shape[0])
 
         return minx, miny, maxx, maxy
-    
+
     def prediction(self, path):
         counter = 0
         frame_keypoints = {}
         poses = []
         pred_list = []
         final_preds = []
-        cap = cv2.VideoCapture(path)
-        # cap.set()
-        
-        # cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-        # cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        cap = cv2.VideoCapture(0 if path == "0" else path)  # Setting zero for camera
+
         with self.mp_pose.Pose(
             min_detection_confidence=0.5, min_tracking_confidence=0.5
         ) as pose:
@@ -159,31 +174,35 @@ class RecognitionDemo(object):
                 results = pose.process(image)
                 if not results.pose_landmarks:
                     continue
-                
+
                 image.flags.writeable = True
                 self.mp_drawing.draw_landmarks(
                     image,
                     results.pose_landmarks,
                     self.mp_pose.POSE_CONNECTIONS,
-                    landmark_drawing_spec=self.mp_drawing_styles.get_default_pose_landmarks_style())
-                
-                
+                    landmark_drawing_spec=self.mp_drawing_styles.get_default_pose_landmarks_style(),
+                )
+
                 pred_pose = results.pose_landmarks.landmark
                 poses.append(pred_pose)
                 counter += 1
-                
+
                 if not len(poses) == 0:
                     if counter > self.total_frames:
                         poses.pop(0)
                         counter = self.total_frames
-                        
+
                     for index, frame_pose in enumerate(poses):
                         frame_landmarks = []
                         for keypoint in frame_pose:
-                            frame_landmarks.append([keypoint.x, keypoint.y]) 
-                        frame_landmarks_flattened = [keypoint for landmark in frame_landmarks for keypoint in landmark]
+                            frame_landmarks.append([keypoint.x, keypoint.y])
+                        frame_landmarks_flattened = [
+                            keypoint
+                            for landmark in frame_landmarks
+                            for keypoint in landmark
+                        ]
                         frame_keypoints[f"frame_{index}"] = frame_landmarks
-                
+
                     # Calculate the min and max value for bounding box creation
                     minx, miny, maxx, maxy = self.draw_boundingbox(
                         image, frame_landmarks_flattened
@@ -198,18 +217,20 @@ class RecognitionDemo(object):
                             predicted_label = torch.argmax(prediction.confidence)
                             if counter > 20:
                                 pred_text = self.action_labels[predicted_label.item()]
+                                # print(pred_text)
                                 pred_list.append(pred_text)
                             else:
-                                pred_text = ""   
-                            
+                                pred_text = ""
+
                             if len(pred_list) > 40:
-                                final_pred = max(pred_list[35:],key=pred_list[35:].count)
+                                final_pred = max(
+                                    pred_list[25:], key=pred_list[25:].count
+                                )
                                 pred_list.clear()
-                                print(final_pred)
-                                
+
                                 # Save predictions in a list
                                 final_preds.append(final_pred)
-                                
+
                                 # Check consecutive prediction of the frame
                                 # If two consecutive frames same then, show second last frame
                                 # else show the last frame
@@ -218,29 +239,89 @@ class RecognitionDemo(object):
                                         pred_to_show = final_preds[-2]
                                         # Perform fifo ops
                                         final_preds.pop(0)
-                                        # print(pred_to_show)
                                     else:
                                         pred_to_show = final_preds[-1]
-                                        # print(pred_to_show)
-                                    # image = cv2.putText(image, pred_to_show,(minx, miny),cv2.FONT_HERSHEY_COMPLEX_SMALL,2,(0, 0, 255),2) 
-                            else:       
-                                            
-                                image = cv2.putText(image, "",(100, 100),cv2.FONT_HERSHEY_SIMPLEX,2,(0, 0, 255),2)                        
+                                        print(pred_to_show)
+                                    image = cv2.putText(
+                                        image,
+                                        pred_to_show,
+                                        (minx, miny),
+                                        cv2.FONT_HERSHEY_COMPLEX_SMALL,
+                                        2,
+                                        (0, 0, 255),
+                                        2,
+                                    )
+                            else:
+
+                                image = cv2.putText(
+                                    image,
+                                    "",
+                                    (100, 100),
+                                    cv2.FONT_HERSHEY_SIMPLEX,
+                                    2,
+                                    (0, 0, 255),
+                                    2,
+                                )
 
                     # Create the bounding box
-                    image = cv2.rectangle(image, (minx, miny), (maxx, maxy), (0, 255, 0), 4)
-                        
+                    image = cv2.rectangle(
+                        image, (minx, miny), (maxx, maxy), (0, 255, 0), 4
+                    )
+
                     end_time = time.perf_counter()
                     fps = 1.0 / (end_time - start_time)
                     avg_fps = 0.8 * fps + 0.2 * fps
-                    image = cv2.putText(image,"frames per sec: %.2f" % (avg_fps,),(10, 60),cv2.FONT_HERSHEY_SIMPLEX,1,(255, 0, 0),2,cv2.LINE_AA,)
+                    image = cv2.putText(
+                        image,
+                        "frames per sec: %.2f" % (avg_fps,),
+                        (10, 60),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        1,
+                        (255, 0, 0),
+                        2,
+                        cv2.LINE_AA,
+                    )
                     cv2.imshow("Result", image)
                     key = cv2.waitKey(1)
                     if key == ord("q"):
-                        break 
-    
-    
+                        break
+
+
 if __name__ == "__main__":
-    path = "./test_video/test_video.mp4"
-    recdem = RecognitionDemo()
-    recdem.prediction(path = path)
+    parser = argparse.ArgumentParser("Arguments for running real time inference")
+    parser.add_argument(
+        "--video_path",
+        default=None,
+        type=str,
+        help="Path to the video. Set to 0 for camera feed.",
+    )
+    parser.add_argument(
+        "--labels_path",
+        type=str,
+        help="Path to the json file containing class names and it labels.",
+    )
+    parser.add_argument("--model_path", help="Path to the trained model directory.")
+
+    parser.add_argument(
+        "--model_name", help="Name of the trained model (.pt extension)"
+    )
+
+    args = parser.parse_args()
+    args.labels_path = "./resources_v2/labels/class_names.json"
+    # args.model_path = "./temp/exp_old_gcn1685076907.493895_checkpoints"
+    args.model_path = "./temp/exp_new_gcn_allclass_checkpoints"
+    # args.model_name = "exp_old_gcn1685076907.493895-44-270"
+    args.model_name = "exp_new_gcn_allclass-44-945"
+    args.video_path = "./resources/evaluation_files/test_video.mp4"
+    oldmodel = False  # Set to true to use old model
+    NUM_CLASS = 10
+    recdem = RecognitionDemo(
+        labels_path=args.labels_path,
+        num_class=NUM_CLASS,
+        model_path=args.model_path,
+        model_name=args.model_name,
+        old_model=oldmodel,
+    )
+    recdem.prediction(path=args.video_path)
+
+# Model name: mediapipe_model-44-945

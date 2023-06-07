@@ -1,4 +1,5 @@
 from __future__ import print_function
+from email.policy import strict
 
 import inspect
 import json
@@ -24,10 +25,8 @@ from graphs.kinetics import KineticsGraph
 from graphs.mpg import MediapipeGraph
 from inference.utils.constants import OPENDR_SERVER_URL
 from inference.utils.data import SkeletonSequence
-# OpenDR engine imports
 from inference.utils.learners import Learner
 from inference.utils.target import Category
-# OpenDR skeleton_based_action_recognition imports
 from models.stgcn import STGCN
 from models.stgcn_old import Model
 from models.tagcn import TAGCN
@@ -37,6 +36,7 @@ from src.feeder import Feeder
 class SpatioTemporalGCNLearner(Learner):
     def __init__(
         self,
+        label_path,
         lr=1e-3,
         batch_size=128,
         optimizer_name="adam",
@@ -53,16 +53,16 @@ class SpatioTemporalGCNLearner(Learner):
         drop_after_epoch=[30, 40],
         start_epoch=0,
         dataset_name="ygar_mp",
-        num_class=10,
+        num_class=3,
         num_point=18,
         num_person=1,
         in_channels=2,
         graph_type="mediapipe",
         method_name="stgcn",
-        old_model = True,
+        old_model=False,
         stbln_symmetric=False,
-        num_frames=60,  #original 300
-        num_subframes=30,   #original 100
+        num_frames=60,  # original 300
+        num_subframes=30,  # original 100
     ):
         super(SpatioTemporalGCNLearner, self).__init__(
             lr=lr,
@@ -105,7 +105,9 @@ class SpatioTemporalGCNLearner(Learner):
         self.num_frames = num_frames
         self.num_subframes = num_subframes
         self.old_model = old_model
-        self.graph = MediapipeGraph() if self.graph_type == "mediapipe" else KineticsGraph()
+        self.graph = (
+            MediapipeGraph() if self.graph_type == "mediapipe" else KineticsGraph()
+        )
 
         if self.num_subframes > self.num_frames:
             raise ValueError(
@@ -136,10 +138,9 @@ class SpatioTemporalGCNLearner(Learner):
                 self.device_ind[0] if type(self.device_ind) is list else self.device_ind
             )
         self.__init_seed(1)
-        self.action_labels = {0 : "big_wind", 1 : "bokbulbok", 2 : "chalseok_chalseok_phaldo", 3 : "chulong_chulong_phaldo", 4 : "crafty_tricks",
-                              5 : "flower_clock", 6 : "seaweed_in_the_swell_sea", 7 : "sowing_corn_and_driving_pigeons",
-                              8 : "waves_crashing", 9 : "wind_that_shakes_trees"}
-        self.classes_dict = self.action_labels
+        with open(label_path) as f:
+            class_names = json.load(f)
+        self.action_labels = {v: k for k, v in class_names.items()}
 
     def fit(
         self,
@@ -206,7 +207,7 @@ class SpatioTemporalGCNLearner(Learner):
                 )
         else:
             self.logging = False
-            
+
         # Initialize the model
         if self.model is None:
             self.init_model()
@@ -220,7 +221,7 @@ class SpatioTemporalGCNLearner(Learner):
                             output_device=self.output_device,
                         )
                 self.loss = self.loss.cuda(self.output_device)
-                
+
         # Load the model from a checkpoint
         checkpoints_folder = os.path.join(
             self.parent_dir, "{}_checkpoints".format(self.experiment_name)
@@ -243,7 +244,7 @@ class SpatioTemporalGCNLearner(Learner):
             self.__load_from_pt(checkpoint_path)
         if verbose:
             print("Model trainable parameters:", self.__count_parameters())
-            
+
         # set the optimizer
         if self.optimizer_name == "sgd":
             self.optimizer_ = optim.SGD(
@@ -312,11 +313,11 @@ class SpatioTemporalGCNLearner(Learner):
         # Start training
         self.global_step = self.start_epoch * len(train_loader) / self.batch_size
         eval_results_list = []
-        
+
         for epoch in range(self.start_epoch, self.epochs):
             self.model.train()
             self.__print_log("Training epoch: {}".format(epoch + 1))
-            save_model = (epoch + 1 == self.epochs)
+            save_model = epoch + 1 == self.epochs
             loss_value = []
             if self.logging:
                 self.train_writer.add_scalar("epoch", epoch, self.global_step)
@@ -528,7 +529,16 @@ class SpatioTemporalGCNLearner(Learner):
         if accuracy > self.best_acc:
             self.best_acc = accuracy
         if verbose:
-            print("Epoch", epoch, "Accuracy: ", accuracy, "loss :", loss, " model: ",  self.experiment_name)
+            print(
+                "Epoch",
+                epoch,
+                "Accuracy: ",
+                accuracy,
+                "loss :",
+                loss,
+                " model: ",
+                self.experiment_name,
+            )
             losses.append(loss)
             accuracies.append(accuracy)
         if self.model_train_state and self.logging:
@@ -554,10 +564,10 @@ class SpatioTemporalGCNLearner(Learner):
                 pickle.dump(score_dict, f)
         learning_details["loss"] = losses
         learning_details["accuracy"] = accuracies
-        
+
         with open("./resources/learning_details.json", "w") as f:
             json.dump(learning_details, f)
-            
+
         return {"epoch": epoch, "accuracy": accuracy, "loss": loss, "score": score}
 
     def __prepare_dataset(
@@ -591,24 +601,28 @@ class SpatioTemporalGCNLearner(Learner):
         """
         data_path = os.path.join(dataset_path, data_filename)
         labels_path = os.path.join(dataset_path, labels_filename)
-        
+
         return Feeder(
             data_path=data_path,
             label_path=labels_path,
             random_choose=True,
             random_move=True,
-            window_size=150
+            window_size=150,
         )
 
     def init_model(self):
         """Initializes the imported model.
         To choose old original implemented model by yysijie set old_model to True.
         """
-        
+
         cuda_ = "cuda" in self.device
         if self.method_name == "stgcn":
             if self.old_model:
-                self.model = Model(in_channels = self.in_channels, num_class=self.num_class, edge_importance_weighting = False)
+                self.model = Model(
+                    in_channels=self.in_channels,
+                    num_class=self.num_class,
+                    edge_importance_weighting=False,
+                )
             else:
                 self.model = STGCN(
                     num_class=self.num_class,
@@ -678,7 +692,7 @@ class SpatioTemporalGCNLearner(Learner):
         m = nn.Softmax(dim=0)
         softmax_predictions = m(output.data[0])
         class_ind = int(torch.argmax(softmax_predictions))
-        class_description = self.classes_dict[class_ind]
+        class_description = self.action_labels[class_ind]
         category = Category(
             prediction=class_ind,
             confidence=softmax_predictions,
@@ -729,7 +743,12 @@ class SpatioTemporalGCNLearner(Learner):
         :type do_constant_folding: bool, optional
         """
         # Input to the model
-        c, t, v, m = [self.in_channels, 300, self.num_point, self.num_person]
+        c, t, v, m = [
+            self.in_channels,
+            self.num_frames,
+            self.num_point,
+            self.num_person,
+        ]
         n = self.batch_size
         onnx_input = torch.randn(n, c, t, v, m)
         if "cuda" in self.device:
@@ -738,12 +757,23 @@ class SpatioTemporalGCNLearner(Learner):
             # Some parts of the model do not make it to GPU, exporting it through CPU
             self.model.cpu()
             self.model.cuda_ = False
-            for x in self.model.layers:
-                if hasattr(self.model.layers[x], "gcn"):
-                    self.model.layers[x].gcn.cuda_ = False
-                elif hasattr(self.model.layers[x], "cuda_"):
-                    self.model.layers[x].cuda_ = False
-            onnx_input = Variable(onnx_input.float(), requires_grad=False)
+            if not self.old_model:
+                opset_version = 11
+                # for x in self.model.st_gcn_networks:
+                for x in self.model.layers:
+                    if hasattr(self.model.layers[x], "gcn"):
+                        self.model.layers[x].gcn.cuda_ = False
+                    elif hasattr(self.model.layers[x], "cuda_"):
+                        self.model.layers[x].cuda_ = False
+                onnx_input = Variable(onnx_input.float(), requires_grad=False)
+            else:
+                opset_version = 12
+                for x in self.model.st_gcn_networks:
+                    if hasattr(x, "gcn"):
+                        x.gcn.cuda_ = False
+                    elif hasattr(x, "cuda_"):
+                        x.cuda_ = False
+                onnx_input = Variable(onnx_input.float(), requires_grad=False)
         else:
             onnx_input = Variable(onnx_input.float(), requires_grad=False)
         # torch_out = self.model(onnx_input)
@@ -754,7 +784,6 @@ class SpatioTemporalGCNLearner(Learner):
             output_name,  # where to save the model (can be a file or file-like object)
             verbose=verbose,
             opset_version=11,
-            enable_onnx_checker=True,
             do_constant_folding=do_constant_folding,
             input_names=["onnx_input"],  # the model's input names
             output_names=["onnx_output"],  # the model's output names
@@ -1228,6 +1257,25 @@ class SpatioTemporalGCNLearner(Learner):
 
 
 if __name__ == "__main__":
-    stgcn = SpatioTemporalGCNLearner(experiment_name="mediapipe_model", epochs=45, num_class=10, old_model=True)
+    import time
+
+    my_label_path = "./resources_v2/labels/class_names.json"
+    dataset_path = "./resources/mediapipe_data"
+    experiment_name = "exp_new_gcn_allclass"
+    EPOCHS = 45
+    NUM_CLASS = 10
+    NUM_POINT = 33
+    convert_to_onnx = True
+    oldmodel = False
+    stgcn = SpatioTemporalGCNLearner(
+        experiment_name=experiment_name,
+        label_path=my_label_path,
+        epochs=EPOCHS,
+        num_class=NUM_CLASS,
+        num_point=NUM_POINT,
+        old_model=oldmodel,
+    )
     # results = stgcn.fit(dataset_path = "./resources/all_classes_60frames")
-    results = stgcn.fit(dataset_path = "./resources/mediapipe_data")
+    results = stgcn.fit(dataset_path=dataset_path)
+    if convert_to_onnx:
+        stgcn.optimize()

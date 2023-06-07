@@ -20,8 +20,19 @@ If you dont want to train the model and use the trained model just for inference
 - The first step to realizing action recognition is to collect the desired data. This can be done by repeatedly recording the actions of multiple persons and creating a large sample of dataset. You can also use opensource datasets or create your own custom dataset consisting of the any type of actions.
 - After you have the video files of the dataset, then the next step is to extract pose data from those videos. In this project, both Mediapipe and Openpose frameworks are used to extract the pose keypoints. Run ```extract_data.py``` to extract the pose data from your videos. To run this file, provide the run time arguments as explained in the file.
 
-```python extract_data.py --video_path {path to your video files} --output_path {path to your output data directory} --labels_path {path to your class_names.json file}```
+```python extract_data.py --video_path {path to your video files} --output_path {path to your output data directory} --labels_path {path to your class_names.json file} --json_output_path {output path to the extracted skeleton data}```
 
+Organize your class_names.json as following.
+```
+{
+    "class 1": 0,
+    "class 2": 1,
+     .
+     .
+     .
+    "class N": N
+}
+```
 The directory to your video_path should be structred as follows. ALl the video files of all your classes should be under a same directory.
 
 ```
