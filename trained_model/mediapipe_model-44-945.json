@@ -1,1 +1,0 @@
-{"model_paths": ["temp/mediapipe_model_checkpoints/mediapipe_model-44-945.pt"], "framework": "pytorch", "format": "pt", "has_data": false, "inference_params": {}, "optimized": false, "optimizer_info": {}}
